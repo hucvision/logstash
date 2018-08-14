@@ -1,0 +1,129 @@
+// Installing Logstash :
+
+sudo yum install java-1.8.0-openjdk
+yum install wget && cd /opt
+wget https://artifacts.elastic.co/downloads/logstash/logstash-6.2.4.rpm
+rpm -ivh logstash-6.2.4.rpm
+cd /usr/share/logstash/
+sudo bin/logstash -e 'input { stdin { } } output { stdout {} }'
+sudo systemctl status logstash.service
+sudo systemctl start logstash.service
+
+//- Download Sample Apache Logs if you don’t have
+
+cd /opt && wget https://download.elastic.co/demos/logstash/gettingstarted/logstash-tutorial.log.gz
+gunzip logstash-tutorial.log.gz
+
+// - Filebeat installation 
+
+curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-6.2.4-x86_64.rpm
+sudo rpm -vi filebeat-6.2.4-x86_64.rpm
+sudo service filebeat enable
+sudo service filebeat start
+
+sudo service filebeat stop
+
+Edit File : vi /etc/filebeat/filebeat.yml
+-------------------------------------------------------Start----------------------------
+		 # Change to true to enable this prospector configuration.
+          enabled: True
+		 
+         # Paths that should be crawled and fetched. Glob based paths.
+           Paths:
+               - /opt/logstash-tutorial.log
+              #- c:\programdata\elasticsearch\logs\*
+		 
+		 # Comment Out Elasticsearch output 
+		 
+		  #----------------------------- Logstash output --------------------------------
+			output.logstash:
+				# The Logstash hosts
+					Hosts: ["192.168.2.151:5044"]
+					
+----------------------------------------------------------Stop-------------------
+
+sudo ./filebeat -e -c /etc/filebeat/filebeat.yml -d "publish"
+
+   
+---------Configuring Logstash for Filebeat Input on Logstash server :----------------------------
+
+vi /etc/logstash/conf.d/first-pipeline.conf					
+
+input {
+    	beats {
+        		port => "5044"
+  		       
+	  }
+# The filter part of this file is commented out to indicate that it is
+# optional.
+	# filter {
+			#
+		# }
+	output {
+    		stdout { codec => rubydebug }
+	       }
+	
+------------------------------------------------------------------------
+sudo systemctl stop logstash.service
+sudo systemctl status logstash.service
+
+cd /usr/share/logstash/
+bin/logstash -f /etc/logstash/conf.d/first-pipeline.conf --config.test_and_exit
+bin/logstash -f /etc/logstash/conf.d/first-pipeline.conf  --config.reload.automatic
+
+vi /etc/logstash/conf.d/first-pipeline.conf
+
+ input {
+    beats {
+        port => "5044"
+          }
+}
+filter {
+    grok {
+        match => { "message" => "%{COMBINEDAPACHELOG}"}
+    }
+}
+output {
+    stdout { codec => rubydebug }
+}
+------------------------------------------------------
+
+Execute on Filebeat Agent server -Delete the Registry to start logs from scratch
+
+
+sudo service filebeat stop
+cd /usr/share/filebeat/bin/data
+rm registry
+sudo service filebeat start
+sudo service filebeat status
+
+----------------------------------------------------------
+
+vi /etc/logstash/conf.d/first-pipeline.conf
+
+ input {
+    beats {
+        port => "5044"
+    }
+}
+ filter {
+    grok {
+        match => { "message" => "%{COMBINEDAPACHELOG}"}
+    }
+    geoip {
+        source => "clientip"
+    }
+}
+output {
+    elasticsearch {
+        hosts => [ "192.168.2.150:9200" ]
+    }
+}
+------------------------------------------------
+
+sudo service filebeat stop
+cd /usr/share/filebeat/bin/data
+rm registry
+sudo service filebeat start
+sudo service filebeat status
+---------------------------------------
